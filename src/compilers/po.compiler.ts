@@ -1,5 +1,5 @@
 import { CompilerInterface } from './compiler.interface.js';
-import { TranslationCollection, TranslationType } from '../utils/translation.collection.js';
+import { TranslationCollection, TranslationData, TranslationType } from '../utils/translation.collection.js';
 
 import pkg from 'gettext-parser';
 const { po } = pkg;
@@ -11,11 +11,16 @@ export class PoCompiler implements CompilerInterface {
 	 * Translation domain
 	 */
 	public domain: string = '';
+	public project: string = '';
 
-	public constructor(options?: any) {}
+	public constructor(options?: any) {
+		if (options && options.project) {
+			this.project = options.project;
+		}
+	}
 
 	public compile(collection: TranslationCollection): string {
-		const data = {
+		const data: any = {
 			charset: 'utf-8',
 			headers: {
 				'mime-version': '1.0',
@@ -24,11 +29,19 @@ export class PoCompiler implements CompilerInterface {
 			},
 			translations: {
 				[this.domain]: Object.keys(collection.values).reduce((translations, key) => {
+					const translationData: TranslationData = collection.get(key);
+					const updateReference = (ref: string) => {
+						const pattern = new RegExp(`^.*?\\/${this.project}`);
+						return ref.replace(pattern, this.project);
+					};
 					return {
 						...translations,
 						[key]: {
 							msgid: key,
-							msgstr: collection.get(key)
+							msgstr: translationData.value,
+							comments: {
+								reference: translationData.reference ? translationData.reference.map((ref) => updateReference(ref)).join('\n') : undefined
+							}
 						}
 					};
 				}, {} as any)
@@ -50,9 +63,13 @@ export class PoCompiler implements CompilerInterface {
 		const values = Object.keys(parsedPo.translations[this.domain])
 			.filter((key) => key.length > 0)
 			.reduce((result, key) => {
+				const poValue = parsedPo.translations[this.domain][key];
 				return {
 					...result,
-					[key]: parsedPo.translations[this.domain][key].msgstr.pop()
+					[key]: {
+						value: poValue.msgstr.pop(),
+						reference: poValue.comments && poValue.comments.reference ? poValue.comments.reference.split('\n') : undefined
+					}
 				};
 			}, {} as TranslationType);
 
